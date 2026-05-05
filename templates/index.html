@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SJC Excel Report Processor</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg:#0d0f14; --surface:#141720; --surface2:#1c2030; --border:#2a2f42;
+    --accent:#4f8ef7; --accent2:#38d9a9; --accent3:#c084fc;
+    --warn:#f7c94f; --err:#f7614f; --text:#e2e8f0; --muted:#6b7494;
+    --mono:'IBM Plex Mono',monospace; --sans:'IBM Plex Sans',sans-serif;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--sans);background:var(--bg);color:var(--text);
+       min-height:100vh;display:flex;flex-direction:column;align-items:center}
+  body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+    background-image:linear-gradient(rgba(79,142,247,.04) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(79,142,247,.04) 1px,transparent 1px);
+    background-size:40px 40px}
+  .wrap{position:relative;z-index:1;width:100%;max-width:860px;padding:48px 24px 80px}
+
+  /* ── Header ── */
+  header{margin-bottom:40px;display:flex;align-items:flex-start;gap:20px}
+  .logo{width:52px;height:52px;flex-shrink:0;border-radius:10px;font-size:22px;
+        background:linear-gradient(135deg,var(--accent),var(--accent2));
+        display:flex;align-items:center;justify-content:center}
+  .htext h1{font-size:1.6rem;font-weight:700;letter-spacing:-.03em;line-height:1.1}
+  .htext p{margin-top:6px;color:var(--muted);font-size:.9rem;font-family:var(--mono)}
+  .tag{display:inline-block;margin-top:8px;padding:2px 8px;border-radius:4px;
+       font-size:.72rem;font-family:var(--mono);letter-spacing:.05em;
+       background:rgba(79,142,247,.12);color:var(--accent);border:1px solid rgba(79,142,247,.3)}
+
+  /* ── Chips ── */
+  .chips{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:32px}
+  .chip{padding:5px 12px;background:var(--surface);border:1px solid var(--border);
+        border-radius:20px;font-size:.74rem;font-family:var(--mono);color:var(--muted);
+        display:flex;align-items:center;gap:6px}
+  .dot{width:5px;height:5px;border-radius:50%}
+  .dot.g{background:var(--accent2)} .dot.b{background:var(--accent)} .dot.p{background:var(--accent3)}
+
+  /* ── Template status banner ── */
+  .tmpl-banner{display:flex;align-items:center;gap:12px;padding:12px 16px;
+               border-radius:10px;margin-bottom:24px;font-size:.82rem;font-family:var(--mono)}
+  .tmpl-banner.ok{background:rgba(56,217,169,.08);border:1px solid rgba(56,217,169,.3);color:var(--accent2)}
+  .tmpl-banner.missing{background:rgba(247,97,79,.08);border:1px solid rgba(247,97,79,.3);color:var(--err)}
+  .tmpl-icon{font-size:18px;flex-shrink:0}
+
+  /* ── Section label ── */
+  .slabel{font-size:.7rem;font-family:var(--mono);color:var(--muted);
+          text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;
+          display:flex;align-items:center;gap:8px}
+  .slabel::after{content:'';flex:1;height:1px;background:var(--border)}
+
+  /* ── Output map ── */
+  .sheet-map{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:32px}
+  @media(max-width:580px){.sheet-map{grid-template-columns:1fr 1fr}}
+  .sbox{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+        padding:10px 12px;font-size:.72rem;font-family:var(--mono);color:var(--muted);line-height:1.4}
+  .sbox .sn{font-size:.65rem;margin-bottom:4px}
+  .sbox .st{color:var(--text);font-weight:600}
+  .sbox .ss{margin-top:4px}
+  .sbox.a{border-top:2px solid var(--accent)}
+  .sbox.c{border-top:2px solid var(--accent2)}
+  .sbox.t{border-top:2px solid var(--accent3)}
+
+  /* ── Drop zone ── */
+  .drop-card{background:var(--surface);border:1.5px dashed var(--border);
+             border-radius:14px;padding:40px 24px;text-align:center;cursor:pointer;
+             transition:all .2s;position:relative;overflow:hidden;margin-bottom:16px}
+  .drop-card:hover,.drop-card.dragover{border-color:var(--accent);background:rgba(79,142,247,.05)}
+  .drop-card.has-files{border-style:solid;border-color:rgba(79,142,247,.5);
+                        box-shadow:0 0 30px rgba(79,142,247,.1)}
+  .drop-card::after{content:'';position:absolute;top:0;left:0;right:0;height:3px;
+                    background:linear-gradient(90deg,var(--accent),var(--accent2));
+                    opacity:0;transition:opacity .2s}
+  .drop-card.has-files::after{opacity:1}
+  .drop-icon{font-size:36px;margin-bottom:12px}
+  .drop-title{font-size:1.05rem;font-weight:600;margin-bottom:6px}
+  .drop-sub{font-size:.82rem;color:var(--muted);font-family:var(--mono);line-height:1.6}
+  .drop-sub code{color:var(--accent);background:rgba(79,142,247,.1);
+                  padding:1px 5px;border-radius:3px}
+  input[type="file"]{display:none}
+
+  /* ── File list ── */
+  #file-list{margin-bottom:16px;display:flex;flex-direction:column;gap:8px}
+  .file-row{display:flex;align-items:center;gap:10px;padding:10px 14px;
+            background:var(--surface);border:1px solid var(--border);border-radius:8px;
+            font-size:.8rem;font-family:var(--mono)}
+  .file-row .badge{flex-shrink:0;padding:2px 8px;border-radius:12px;font-size:.68rem;font-weight:600}
+  .file-row .badge.matched{background:rgba(56,217,169,.15);color:var(--accent2);
+                             border:1px solid rgba(56,217,169,.3)}
+  .file-row .badge.unknown{background:rgba(247,97,79,.12);color:var(--err);
+                             border:1px solid rgba(247,97,79,.3)}
+  .file-row .fname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+  .file-row .fkey{color:var(--accent3);font-size:.72rem}
+  .file-row .rm{margin-left:auto;flex-shrink:0;background:none;border:none;cursor:pointer;
+                color:var(--muted);font-size:14px;padding:0 2px;transition:color .15s}
+  .file-row .rm:hover{color:var(--err)}
+
+  /* ── Generate button ── */
+  .gen-btn{width:100%;padding:16px;border:none;border-radius:10px;cursor:pointer;
+           font-size:1rem;font-weight:700;font-family:var(--sans);letter-spacing:.02em;
+           background:linear-gradient(135deg,var(--accent),#6366f1);color:#fff;
+           display:flex;align-items:center;justify-content:center;gap:10px;
+           transition:opacity .2s,transform .1s;margin-bottom:20px}
+  .gen-btn:hover{opacity:.9;transform:translateY(-1px)}
+  .gen-btn:active{transform:translateY(0)}
+  .gen-btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+
+  /* ── Status box ── */
+  #status-box{display:none;background:var(--surface);border:1px solid var(--border);
+              border-radius:10px;padding:20px 24px;margin-top:4px}
+  #status-box.visible{display:block}
+  .status-row{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+  .spinner{width:20px;height:20px;flex-shrink:0;border:2px solid var(--border);
+           border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .smsg{font-size:.9rem;color:var(--muted);font-family:var(--mono)}
+  .sheets-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+  .spill{padding:4px 10px;background:rgba(79,142,247,.12);border:1px solid rgba(79,142,247,.25);
+         border-radius:20px;font-size:.75rem;font-family:var(--mono);color:var(--accent);
+         display:flex;align-items:center;gap:6px}
+  .sdot{width:6px;height:6px;background:var(--accent2);border-radius:50%}
+  .dl-btn{width:100%;padding:14px;background:rgba(56,217,169,.12);color:var(--accent2);
+          border:1.5px solid rgba(56,217,169,.4);border-radius:10px;font-size:.95rem;
+          font-weight:600;font-family:var(--sans);cursor:pointer;letter-spacing:.02em;
+          transition:all .2s;margin-top:16px;text-decoration:none;
+          display:flex;align-items:center;justify-content:center;gap:10px}
+  .dl-btn:hover{background:rgba(56,217,169,.2);border-color:var(--accent2);transform:translateY(-1px)}
+  .warn-box{margin-top:12px;padding:10px 14px;background:rgba(247,201,79,.08);
+            border:1px solid rgba(247,201,79,.3);border-radius:6px;font-size:.78rem;
+            font-family:var(--mono);color:var(--warn);line-height:1.6}
+  .err-box{margin-top:12px;padding:10px 14px;background:rgba(247,97,79,.08);
+           border:1px solid rgba(247,97,79,.3);border-radius:6px;font-size:.82rem;
+           font-family:var(--mono);color:var(--err)}
+
+  footer{margin-top:60px;padding-bottom:16px;color:var(--muted);font-size:.75rem;
+         font-family:var(--mono);text-align:center;letter-spacing:.05em}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">📊</div>
+    <div class="htext">
+      <h1>SJC Excel Report<br>Processor</h1>
+      <p>v4.0 · multi-file pipeline</p>
+      <span class="tag">RAW FILES → COMBINED OUTPUT</span>
+    </div>
+  </header>
+
+  <div class="chips">
+    <div class="chip"><span class="dot g"></span>Multi-file upload</div>
+    <div class="chip"><span class="dot b"></span>Auto filename matching</div>
+    <div class="chip"><span class="dot p"></span>Template from folder</div>
+    <div class="chip"><span class="dot g"></span>4 output sheets</div>
+  </div>
+
+  <!-- Template status -->
+  {% if template_name %}
+  <div class="tmpl-banner ok">
+    <span class="tmpl-icon">✓</span>
+    <div>
+      <strong>Template ready:</strong> {{ template_name }}<br>
+      <span style="opacity:.7">Located in <code style="background:rgba(56,217,169,.1);padding:1px 5px;border-radius:3px;color:inherit">./template/</code> folder — Charge Detail Report will be generated.</span>
+    </div>
+  </div>
+  {% else %}
+  <div class="tmpl-banner missing">
+    <span class="tmpl-icon">⚠</span>
+    <div>
+      <strong>No template file found</strong> in <code style="background:rgba(247,97,79,.1);padding:1px 5px;border-radius:3px;color:inherit">./template/</code> folder.<br>
+      <span style="opacity:.7">Charge Detail Report sheet will be skipped. Drop a .xlsx there and restart.</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Output sheet map -->
+  <div class="slabel">Output Sheets</div>
+  <div class="sheet-map">
+    <div class="sbox a"><div class="sn">Sheet 1</div><div class="st">Begin &amp; Ending AR</div><div class="ss">← ARC_18</div></div>
+    <div class="sbox c"><div class="sn">Sheet 2</div><div class="st">SJC_Closed Report</div><div class="ss">← PCD_20</div></div>
+    <div class="sbox c"><div class="sn">Sheet 3</div><div class="st">SJC E&amp;M Summary</div><div class="ss">← PCD_20</div></div>
+    <div class="sbox t"><div class="sn">Sheet 4</div><div class="st">Charge Detail</div><div class="ss">← Template + CNT/PAT/FIN</div></div>
+  </div>
+
+  <!-- Upload -->
+  <div class="slabel">Upload Raw Data Files</div>
+
+  <div class="drop-card" id="drop-card" onclick="document.getElementById('file-input').click()">
+    <input type="file" id="file-input" multiple accept=".xlsx,.xls" onchange="addFiles(this.files)"/>
+    <div class="drop-icon">📂</div>
+    <div class="drop-title">Click or drag &amp; drop multiple files</div>
+    <div class="drop-sub">
+      Files are matched by name prefix — upload any combination:<br>
+      <code>ARC_18</code> &nbsp;<code>PCD_20</code> &nbsp;<code>CNT_27</code> &nbsp;<code>CNT_19</code> &nbsp;<code>PAT_2</code> &nbsp;<code>FIN_18</code><br>
+      Extra suffixes are fine: <code>PAT_2_BySvcDate_41c9bded.xlsx</code> → matched as <strong>PAT_2</strong>
+    </div>
+  </div>
+
+  <div id="file-list"></div>
+
+  <button class="gen-btn" id="gen-btn" onclick="generate()">
+    <span>⚡</span> Generate Combined Report
+  </button>
+
+  <!-- Status -->
+  <div id="status-box">
+    <div class="status-row">
+      <div class="spinner" id="spinner"></div>
+      <span class="smsg" id="smsg">Processing…</span>
+    </div>
+    <div id="sheets-container" style="display:none">
+      <div style="font-size:.75rem;color:var(--muted);font-family:var(--mono);margin-bottom:8px">OUTPUT SHEETS</div>
+      <div class="sheets-list" id="sheets-list"></div>
+    </div>
+    <div id="warn-container"></div>
+    <div id="err-container"></div>
+    <a class="dl-btn" id="dl-btn" style="display:none" href="#" target="_blank">
+      ⬇ Download SJC_Combined_Report.xlsx
+    </a>
+  </div>
+
+  <footer>SJC Excel Processor · v4.0 · Files matched by filename prefix</footer>
+</div>
+
+<script>
+// Known prefixes for live client-side matching (mirrors server logic)
+const PREFIXES = ["ARC_18","PCD_20","CNT_27","CNT_19","PAT_2","FIN_18"];
+
+function resolveKey(filename) {
+  const stem = filename.replace(/\.[^.]+$/,'').toUpperCase();
+  for (const p of PREFIXES) {
+    if (stem === p) return p;
+    if (stem.startsWith(p) && stem.length > p.length && !/[A-Z0-9]/.test(stem[p.length])) return p;
+  }
+  return null;
+}
+
+// fileMap: key -> File object (keyed by resolved prefix, or original name if unknown)
+const fileMap = {};   // resolved key OR original name -> File
+
+function renderFileList() {
+  const list = document.getElementById('file-list');
+  list.innerHTML = '';
+  const card = document.getElementById('drop-card');
+
+  const entries = Object.entries(fileMap);
+  if (!entries.length) { card.classList.remove('has-files'); return; }
+  card.classList.add('has-files');
+
+  for (const [mapKey, file] of entries) {
+    const isMatched = PREFIXES.includes(mapKey);
+    const row = document.createElement('div');
+    row.className = 'file-row';
+    row.innerHTML = `
+      <span class="badge ${isMatched ? 'matched' : 'unknown'}">${isMatched ? '✓ matched' : '? unknown'}</span>
+      <span class="fname">${file.name}</span>
+      ${isMatched ? `<span class="fkey">→ ${mapKey}</span>` : ''}
+      <button class="rm" title="Remove" onclick="removeFile('${mapKey}')">✕</button>`;
+    list.appendChild(row);
+  }
+}
+
+function addFiles(fileList) {
+  for (const file of fileList) {
+    const key = resolveKey(file.name) || file.name;  // fallback to filename if unrecognised
+    fileMap[key] = file;
+  }
+  // Reset input so same file can be re-added if needed
+  document.getElementById('file-input').value = '';
+  renderFileList();
+}
+
+function removeFile(key) {
+  delete fileMap[key];
+  renderFileList();
+}
+
+// Drag & drop
+const card = document.getElementById('drop-card');
+card.addEventListener('dragover', e => { e.preventDefault(); card.classList.add('dragover'); });
+card.addEventListener('dragleave', () => card.classList.remove('dragover'));
+card.addEventListener('drop', e => {
+  e.preventDefault(); e.stopPropagation();
+  card.classList.remove('dragover');
+  addFiles(e.dataTransfer.files);
+});
+
+async function generate() {
+  const entries = Object.entries(fileMap);
+  if (!entries.length) { alert('Please add at least one raw data file.'); return; }
+
+  const matched = entries.filter(([k]) => PREFIXES.includes(k));
+  if (!matched.length) {
+    alert('None of your files could be matched to a known data source.\nFilenames must start with: ARC_18, PCD_20, CNT_27, CNT_19, PAT_2, or FIN_18.');
+    return;
+  }
+
+  const btn  = document.getElementById('gen-btn');
+  const sbox = document.getElementById('status-box');
+  const spin = document.getElementById('spinner');
+  const smsg = document.getElementById('smsg');
+  const dlb  = document.getElementById('dl-btn');
+  const shc  = document.getElementById('sheets-container');
+  const shl  = document.getElementById('sheets-list');
+  const wc   = document.getElementById('warn-container');
+  const ec   = document.getElementById('err-container');
+
+  btn.disabled = true;
+  sbox.classList.add('visible');
+  spin.style.display = 'block';
+  smsg.textContent   = 'Uploading and processing…';
+  smsg.style.color   = '';
+  dlb.style.display  = 'none';
+  shc.style.display  = 'none';
+  shl.innerHTML = wc.innerHTML = ec.innerHTML = '';
+
+  const fd = new FormData();
+  for (const [, file] of matched) fd.append('raw_files', file);
+
+  try {
+    const res  = await fetch('/process', { method:'POST', body:fd });
+    const data = await res.json();
+    spin.style.display = 'none';
+
+    if (!res.ok || data.error) {
+      smsg.textContent = 'Processing failed.';
+      ec.innerHTML = `<div class="err-box">❌ ${data.error || 'Unknown error'}</div>`;
+    } else {
+      smsg.textContent = '✓ Processing complete!';
+      smsg.style.color = 'var(--accent2)';
+
+      if (data.sheets?.length) {
+        shc.style.display = 'block';
+        data.sheets.forEach(s => {
+          const p = document.createElement('div');
+          p.className = 'spill';
+          p.innerHTML = `<span class="sdot"></span>${s}`;
+          shl.appendChild(p);
+        });
+      }
+      if (data.warnings?.length)
+        wc.innerHTML = '<div class="warn-box">⚠ ' + data.warnings.join('<br>⚠ ') + '</div>';
+
+      dlb.href = '/download/' + data.session_id;
+      dlb.style.display = 'flex';
+    }
+  } catch(err) {
+    spin.style.display = 'none';
+    smsg.textContent   = 'Network error.';
+    ec.innerHTML = `<div class="err-box">❌ ${err.message}</div>`;
+  }
+  btn.disabled = false;
+}
+</script>
+</body>
+</html>
